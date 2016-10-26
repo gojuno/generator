@@ -55,7 +55,6 @@ var chanPrefixes = map[types.ChanDir]string{
 
 //New creates new Generator and returns pointer to it
 func New() *Generator {
-	fmt.Printf("Hello generator!\n")
 	gen := &Generator{
 		header: `
 			This code was automatically generated using github.com/gojuno/generator lib.

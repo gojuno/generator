@@ -55,6 +55,7 @@ var chanPrefixes = map[types.ChanDir]string{
 
 //New creates new Generator and returns pointer to it
 func New() *Generator {
+	fmt.Printf("Hello generator!\n")
 	gen := &Generator{
 		header: `
 			This code was automatically generated using github.com/gojuno/generator lib.
@@ -435,10 +436,22 @@ type Param struct {
 	Type         string
 	Name         string
 	OriginalType types.Type
+	Variadic     bool
 }
 
 func (p *Param) String() string {
+	if p.Variadic {
+		return fmt.Sprintf("%s %s", p.Name, strings.Replace(p.Type, "[]", "...", 1))
+	}
 	return fmt.Sprintf("%s %s", p.Name, p.Type)
+}
+
+func (p *Param) Pass() string {
+	if p.Variadic {
+		return p.Name + "..."
+	}
+
+	return p.Name
 }
 
 //ParamSet is a helper structure that represents list of input or result parameters
@@ -452,6 +465,18 @@ func (ps ParamSet) String() string {
 	}
 
 	return strings.Join(params, ",")
+}
+
+//Pass returns a string containing parameters list to pass as a list
+//of arguments to the function that has same signature as a function
+//that ParamSet is originated from
+func (ps ParamSet) Pass() string {
+	names := make([]string, len(ps))
+	for i := 0; i < len(ps); i++ {
+		names[i] = ps[i].Pass()
+	}
+
+	return strings.Join(names, ",")
 }
 
 //Names returns a list of params names from the ParamSet separated by
@@ -473,7 +498,12 @@ func (g *Generator) FuncParams(f interface{}) (ParamSet, error) {
 		return nil, fmt.Errorf("failed to get func %+v signature", f)
 	}
 
-	return g.makeParamSet("p", signature.Params()), nil
+	paramSet := g.makeParamSet("p", signature.Params())
+	if signature.Variadic() {
+		paramSet[len(paramSet)-1].Variadic = true
+	}
+
+	return paramSet, nil
 }
 
 //FuncResults returns a slice of function results

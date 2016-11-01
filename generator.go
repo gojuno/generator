@@ -152,7 +152,14 @@ func (g *Generator) PackagePathAndName(pkg interface{}) (path string, name strin
 		log.Fatalf("unsupported pkg type: %T", pkg)
 	}
 
-	return path, name
+	return NormalizeImportPath(path), name
+}
+
+//NormalizeImportPath takes path and return import path relative to deepest
+//nested vendor dir
+func NormalizeImportPath(path string) string {
+	chunks := strings.Split(path, "/vendor/")
+	return chunks[len(chunks)-1]
 }
 
 //loadPackage loads package by it's path caches and returns package information
@@ -705,12 +712,14 @@ func PackageOf(filePath string) (string, error) {
 	return "", fmt.Errorf("can't detect package for file: %q", filePath)
 }
 
-//Copy copies entities sources to the generated body applying
+//Copy copies entity source to the generated body applying
 //type conversion rules and correct packages aliases
 func (g *Generator) Copy(n interface{}) error {
 	switch v := n.(type) {
 	case *ast.TypeSpec:
 		return g.CopyType(v)
+	case *ast.ValueSpec:
+		return g.CopyVal(v)
 	}
 
 	return fmt.Errorf("can't copy variable of type: %T", n)
@@ -728,6 +737,54 @@ func (g *Generator) CopyType(typeSpec *ast.TypeSpec) error {
 	}
 
 	return nil
+}
+
+//CopyValue copies var or constant declaration to the generated body
+func (g *Generator) CopyVal(vSpec *ast.ValueSpec) error {
+	var err error
+	for i, ident := range vSpec.Names {
+		obj, ok := g.Defs[ident]
+		if !ok {
+			return fmt.Errorf("can't find definition for %s", ident.Name)
+		}
+
+		switch v := obj.(type) {
+		case *types.Const:
+			err = g.copyConst(v)
+		case *types.Var:
+			err = g.copyVar(v, vSpec.Values[i])
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to copy %s (%+v): %v", ident.Name, obj, err)
+		}
+	}
+
+	return nil
+}
+
+func (g *Generator) copyConst(c *types.Const) error {
+	var err error
+	switch t := c.Type().(type) {
+	case *types.Basic:
+		_, err = fmt.Fprintf(g, "const %s = %s\n", c.Name(), c.Val().ExactString())
+	default:
+		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().ExactString())
+	}
+
+	return err
+}
+
+func (g *Generator) copyVar(c *types.Var, expr ast.Expr) error {
+	var err error
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		_, err = fmt.Fprintf(g, "var %s %s = %s\n", c.Name(), g.TypeOf(c.Type()), e.Value)
+	default:
+		_, err = fmt.Fprintf(g, "//%s is defined via %T which is not supported\n", c.Name(), expr)
+	}
+
+	return err
 }
 
 //MixedCaps transform underscored string to mixed-caps string

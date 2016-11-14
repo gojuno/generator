@@ -20,8 +20,7 @@ import (
 //Generator stores information about imports, loaded packages,
 //registered template functions and global template variables
 type Generator struct {
-	*types.Info
-	loader.Config
+	*loader.Program
 
 	imports         map[string]*importInfo
 	header          string
@@ -54,7 +53,7 @@ var chanPrefixes = map[types.ChanDir]string{
 }
 
 //New creates new Generator and returns pointer to it
-func New() *Generator {
+func New(prog *loader.Program) *Generator {
 	gen := &Generator{
 		header: `
 			This code was automatically generated using github.com/gojuno/generator lib.
@@ -64,8 +63,9 @@ func New() *Generator {
 		templateFuncs:   map[string]interface{}{},
 		typeConversions: map[string]string{},
 		vars:            map[string]string{},
-		loadedPackages:  map[string]*loader.PackageInfo{},
 		body:            bytes.NewBuffer([]byte{}),
+
+		Program: prog,
 	}
 
 	gen.AddTemplateFunc("signature", gen.FuncSignature)
@@ -164,19 +164,12 @@ func NormalizeImportPath(path string) string {
 
 //loadPackage loads package by it's path caches and returns package information
 func (g *Generator) loadPackage(path string) (*loader.PackageInfo, error) {
-	if _, ok := g.loadedPackages[path]; !ok {
-		config := g.Config //using base config settings
-		config.Import(path)
-
-		prog, err := config.Load()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load package %q: %v", path, err)
-		}
-
-		g.loadedPackages[path] = prog.Package(path)
+	pkg := g.Program.Package(path)
+	if pkg != nil {
+		return pkg, nil
 	}
 
-	return g.loadedPackages[path], nil
+	return nil, fmt.Errorf("failed to load package %q", path)
 }
 
 //ImportWithAlias places given package to the list of imported packages and assigns alias to it.
@@ -306,12 +299,13 @@ func (g *Generator) Write(b []byte) (int, error) {
 func (g *Generator) TypeOf(i interface{}) string {
 	switch t := i.(type) {
 	case ast.Expr:
-		typesType, ok := g.Types[t]
-		if !ok {
-			log.Fatalf("can't detect type of expression %+v", typesType)
+		for _, info := range g.Program.AllPackages {
+			if typesType := info.TypeOf(t); typesType != nil {
+				return g.TypeOf(typesType)
+			}
 		}
 
-		return g.TypeOf(typesType)
+		log.Fatalf("can't detect type of expression %+v", t)
 	case *Param:
 		return t.Type
 	case types.TypeAndValue:
@@ -323,6 +317,18 @@ func (g *Generator) TypeOf(i interface{}) string {
 	}
 
 	return ""
+}
+
+//ExpressionType searches amoung all loaded packages and returns a type of
+//given ast.Expression
+func (g *Generator) ExpressionType(e ast.Expr) (types.Type, error) {
+	for _, info := range g.Program.AllPackages {
+		if typesType := info.TypeOf(e); typesType != nil {
+			return typesType, nil
+		}
+	}
+
+	return nil, fmt.Errorf("expression not found: %+v", e)
 }
 
 //typeOf returns type name with package selector for the given type
@@ -527,25 +533,24 @@ func (g *Generator) FuncResults(f interface{}) (ParamSet, error) {
 func (g *Generator) funcSignature(f interface{}) (*types.Signature, error) {
 	switch t := f.(type) {
 	case ast.Expr:
-		if tt, ok := g.Info.Types[t]; ok {
-			if s, ok := tt.Type.(*types.Signature); ok {
-				return s, nil
+		for _, info := range g.Program.AllPackages {
+			if tt, ok := info.Types[t]; ok {
+				if s, ok := tt.Type.(*types.Signature); ok {
+					return s, nil
+				}
 			}
 		}
 
 		return nil, fmt.Errorf("value %+v doesn't represent a function signature", t)
 		//TODO: case *ast.FuncDecl:
 	case *ast.SelectorExpr:
-		selection, ok := g.Info.Selections[t]
-		if !ok {
-			return nil, fmt.Errorf("failed to find selection information for: %+v", f)
+		for _, info := range g.Program.AllPackages {
+			if selection, ok := info.Selections[t]; ok && selection.Kind() == types.MethodVal {
+				return selection.Type().(*types.Signature), nil
+			}
 		}
 
-		if selection.Kind() != types.MethodVal {
-			log.Fatalf("given selection is not a method selector: %v", f)
-		}
-
-		return selection.Type().(*types.Signature), nil
+		return nil, fmt.Errorf("failed to find selection information for: %+v", f)
 	case *types.Signature:
 		return t, nil
 	case types.Type:
@@ -742,21 +747,30 @@ func (g *Generator) CopyType(typeSpec *ast.TypeSpec) error {
 //CopyValue copies var or constant declaration to the generated body
 func (g *Generator) CopyVal(vSpec *ast.ValueSpec) error {
 	var err error
+
 	for i, ident := range vSpec.Names {
-		obj, ok := g.Defs[ident]
-		if !ok {
+		found := false
+
+		for _, info := range g.Program.AllPackages {
+			if obj, ok := info.Defs[ident]; ok {
+				switch v := obj.(type) {
+				case *types.Const:
+					err = g.copyConst(v)
+				case *types.Var:
+					err = g.copyVar(v, vSpec.Values[i])
+				}
+
+				if err != nil {
+					return fmt.Errorf("failed to copy %s (%+v): %v", ident.Name, obj, err)
+				}
+
+				found = true
+				break
+			}
+		}
+
+		if !found {
 			return fmt.Errorf("can't find definition for %s", ident.Name)
-		}
-
-		switch v := obj.(type) {
-		case *types.Const:
-			err = g.copyConst(v)
-		case *types.Var:
-			err = g.copyVar(v, vSpec.Values[i])
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to copy %s (%+v): %v", ident.Name, obj, err)
 		}
 	}
 

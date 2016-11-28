@@ -500,7 +500,19 @@ func (ps ParamSet) Names() string {
 	}
 
 	return strings.Join(names, ",")
+}
 
+func (ps ParamSet) Types() string {
+	types := make([]string, len(ps))
+	for i := 0; i < len(ps); i++ {
+		if ps[i].Variadic {
+			types[i] = strings.Replace(ps[i].Type, "[]", "...", 1)
+		} else {
+			types[i] = ps[i].Type
+		}
+	}
+
+	return strings.Join(types, ",")
 }
 
 //FuncParams returns a slice of function parameters

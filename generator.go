@@ -348,7 +348,13 @@ func (g *Generator) typeOf(tt types.Type) string {
 		name := "struct{\n"
 		for i := 0; i < t.NumFields(); i++ {
 			field := t.Field(i)
-			name += field.Name() + " " + g.typeOf(field.Type()) + "\n"
+			name += field.Name() + " " + g.typeOf(field.Type())
+
+			if t.Tag(i) != "" {
+				name += fmt.Sprintf(" `%s`\n", t.Tag(i))
+			} else {
+				name += "\n"
+			}
 		}
 		return name + "\n}"
 	case *types.Signature:

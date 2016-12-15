@@ -348,7 +348,10 @@ func (g *Generator) typeOf(tt types.Type) string {
 		name := "struct{\n"
 		for i := 0; i < t.NumFields(); i++ {
 			field := t.Field(i)
-			name += field.Name() + " " + g.typeOf(field.Type())
+			if !field.Anonymous() {
+				name += field.Name()
+			}
+			name += " " + g.typeOf(field.Type())
 
 			if t.Tag(i) != "" {
 				name += fmt.Sprintf(" `%s`\n", t.Tag(i))

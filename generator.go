@@ -30,6 +30,10 @@ type Generator struct {
 	typeConversions map[string]string
 	vars            map[string]string
 	loadedPackages  map[string]*loader.PackageInfo
+
+	typesPrefixes        map[string]string
+	defaultParamsPrefix  string
+	defaultResultsPrefix string
 }
 
 type importInfo struct {
@@ -61,9 +65,10 @@ func New(prog *loader.Program) *Generator {
 		`,
 		imports:         map[string]*importInfo{},
 		templateFuncs:   map[string]interface{}{},
+		body:            bytes.NewBuffer([]byte{}),
 		typeConversions: map[string]string{},
 		vars:            map[string]string{},
-		body:            bytes.NewBuffer([]byte{}),
+		typesPrefixes:   map[string]string{},
 
 		Program: prog,
 	}
@@ -436,6 +441,18 @@ func (g *Generator) AddTemplateFunc(name string, f interface{}) {
 	g.templateFuncs[name] = f
 }
 
+func (g *Generator) AddTypePrefix(typeName, prefix string) {
+	g.typesPrefixes[typeName] = prefix
+}
+
+func (g *Generator) SetDefaultParamsPrefix(prefix string) {
+	g.defaultParamsPrefix = prefix
+}
+
+func (g *Generator) SetDefaultResultsPrefix(prefix string) {
+	g.defaultResultsPrefix = prefix
+}
+
 //FuncSignature returns a signature of the function represented by f
 //f can be one of: ast.Expr, ast.SelectorExpr, types.Type, types.Signature
 func (g *Generator) FuncSignature(f interface{}) (string, error) {
@@ -531,7 +548,7 @@ func (g *Generator) FuncParams(f interface{}) (ParamSet, error) {
 		return nil, fmt.Errorf("failed to get func %+v signature", f)
 	}
 
-	paramSet := g.makeParamSet("p", signature.Params())
+	paramSet := g.makeParamSet(g.defaultParamsPrefix, signature.Params())
 	if signature.Variadic() {
 		paramSet[len(paramSet)-1].Variadic = true
 	}
@@ -546,7 +563,7 @@ func (g *Generator) FuncResults(f interface{}) (ParamSet, error) {
 		return nil, fmt.Errorf("failed to get func %+v signature", f)
 	}
 
-	return g.makeParamSet("r", signature.Results()), nil
+	return g.makeParamSet(g.defaultResultsPrefix, signature.Results()), nil
 }
 
 //funcSignature returns *types.Signature related to f. Where f can be one
@@ -592,17 +609,30 @@ func (g *Generator) funcSignature(f interface{}) (*types.Signature, error) {
 func (g *Generator) makeParamSet(prefix string, params *types.Tuple) ParamSet {
 	ps := make(ParamSet, params.Len())
 
+	numericParamCounter := 0
+
 	for i := 0; i < params.Len(); i++ {
 		param := params.At(i)
 		name := param.Name()
 
-		if prefix != "" {
-			name = fmt.Sprintf("%s%d", prefix, i)
+		typeName := g.typeOf(param.Type())
+		paramPrefix, ok := g.typesPrefixes[typeName]
+		if !ok {
+			paramPrefix = prefix
+			numericParamCounter++
+		}
+
+		if paramPrefix != "" {
+			if numericParamCounter <= 1 {
+				name = paramPrefix
+			} else {
+				name = fmt.Sprintf("%s%d", paramPrefix, i)
+			}
 		}
 
 		ps[i] = &Param{
 			Name:         name,
-			Type:         g.typeOf(param.Type()),
+			Type:         typeName,
 			OriginalType: param.Type(),
 		}
 	}

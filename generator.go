@@ -832,9 +832,15 @@ func (g *Generator) copyConst(c *types.Const) error {
 	var err error
 	switch t := c.Type().(type) {
 	case *types.Basic:
-		_, err = fmt.Fprintf(g, "const %s = %s\n", c.Name(), c.Val().ExactString())
+		var typeName string
+		switch t.Kind() {
+		case types.UntypedBool, types.UntypedInt, types.UntypedRune, types.UntypedFloat, types.UntypedComplex, types.UntypedString, types.UntypedNil:
+		default:
+			typeName = t.Name()
+		}
+		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), typeName, c.Val().String())
 	default:
-		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().ExactString())
+		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().String())
 	}
 
 	return err

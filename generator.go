@@ -278,8 +278,10 @@ func (g *Generator) writeImports(w io.Writer) error {
 	}
 
 	for path, alias := range g.imports {
-		if _, err := fmt.Fprintf(w, "%s %q\n", alias, path); err != nil {
-			return err
+		if alias.Alias == nil || *alias.Alias != "" {
+			if _, err := fmt.Fprintf(w, "%s %q\n", alias, path); err != nil {
+				return err
+			}
 		}
 	}
 

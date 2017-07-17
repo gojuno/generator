@@ -238,12 +238,12 @@ func (g *Generator) WriteToFilename(filename string) error {
 func (g *Generator) WriteTo(w io.Writer) (int64, error) {
 	buf := bytes.NewBuffer([]byte{})
 
-	if err := g.writeHeader(buf); err != nil {
-		return 0, fmt.Errorf("failed to write file header: %v", err)
+	if _, err := fmt.Fprintf(buf, "package %s\n", g.packageName); err != nil {
+		return 0, fmt.Errorf("failed to write package name: %v", err)
 	}
 
-	if _, err := fmt.Fprintf(buf, "\npackage %s\n", g.packageName); err != nil {
-		return 0, fmt.Errorf("failed to write package name: %v", err)
+	if err := g.writeHeader(buf); err != nil {
+		return 0, fmt.Errorf("failed to write file header: %v", err)
 	}
 
 	if err := g.writeImports(buf); err != nil {

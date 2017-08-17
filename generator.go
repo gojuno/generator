@@ -840,9 +840,9 @@ func (g *Generator) copyConst(c *types.Const) error {
 		default:
 			typeName = t.Name()
 		}
-		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), typeName, c.Val().String())
+		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), typeName, c.Val().ExactString())
 	default:
-		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().String())
+		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().ExactString())
 	}
 
 	return err

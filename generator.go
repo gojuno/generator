@@ -831,19 +831,26 @@ func (g *Generator) CopyVal(vSpec *ast.ValueSpec) error {
 }
 
 func (g *Generator) copyConst(c *types.Const) error {
-	var err error
+	var typeName string
+	val := c.Val().String()
+
 	switch t := c.Type().(type) {
 	case *types.Basic:
-		var typeName string
 		switch t.Kind() {
-		case types.UntypedBool, types.UntypedInt, types.UntypedRune, types.UntypedFloat, types.UntypedComplex, types.UntypedString, types.UntypedNil:
+		case types.UntypedString:
+			val = c.Val().ExactString()
+		case types.String:
+			val = c.Val().ExactString()
+			typeName = t.Name()
+		case types.UntypedBool, types.UntypedInt, types.UntypedRune, types.UntypedFloat, types.UntypedComplex, types.UntypedNil:
 		default:
 			typeName = t.Name()
 		}
-		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), typeName, c.Val().String())
 	default:
-		_, err = fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), g.TypeOf(t), c.Val().String())
+		typeName = g.TypeOf(t)
 	}
+
+	_, err := fmt.Fprintf(g, "const %s %s = %s\n", c.Name(), typeName, val)
 
 	return err
 }

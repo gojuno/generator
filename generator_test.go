@@ -3,6 +3,7 @@ package generator
 import (
 	"testing"
 
+	"bytes"
 	"golang.org/x/tools/go/loader"
 )
 
@@ -61,5 +62,41 @@ func TestImportWithAlias(t *testing.T) {
 	}
 	if path != "fmt" {
 		t.Errorf("expected: \"fmt\", got: %s", path)
+	}
+}
+
+func TestBuildTags(t *testing.T) {
+	cfg := loader.Config{}
+	cfg.Import("log")
+
+	prog, err := cfg.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g := New(prog)
+
+	g.packageName = "buildtags"
+
+	g.AddBuildTags("linux", "darwin,!cgo")
+	g.AddBuildTags("386")
+
+	buf := new(bytes.Buffer)
+	if _, err := g.WriteTo(buf); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	expected :=
+`// +build linux darwin,!cgo
+// +build 386
+
+package buildtags
+/*
+This code was automatically generated using github.com/gojuno/generator lib.
+			Please DO NOT modify.
+*/`
+
+	if expected != buf.String() {
+		t.Errorf("expected %s, got %s", expected, buf.String())
 	}
 }

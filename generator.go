@@ -22,6 +22,7 @@ import (
 type Generator struct {
 	*loader.Program
 
+	buildTags       [][]string
 	imports         map[string]*importInfo
 	header          string
 	packageName     string
@@ -88,6 +89,14 @@ func New(prog *loader.Program) *Generator {
 // SetHeader sets header comment for generated files
 func (g *Generator) SetHeader(h string) {
 	g.header = h
+}
+
+//AddBuildTags adds build tags for generated files
+func (g *Generator) AddBuildTags(tags ...string) {
+	if g.buildTags == nil {
+		g.buildTags = make([][]string, 0, 1)
+	}
+	g.buildTags = append(g.buildTags, tags)
 }
 
 //Import imports package and returns its path and selector(alias)
@@ -237,6 +246,16 @@ func (g *Generator) WriteToFilename(filename string) error {
 //WriteTo generates source and writes result to w
 func (g *Generator) WriteTo(w io.Writer) (int64, error) {
 	buf := bytes.NewBuffer([]byte{})
+
+	for i, tags := range g.buildTags {
+		eol := "\n"
+		if i == len(g.buildTags)-1 {
+			eol += "\n"
+		}
+		if _, err := fmt.Fprintf(buf, "// +build %s%s", strings.Join(tags, " "), eol); err != nil {
+			return 0, fmt.Errorf("failed to write build tags: %v", err)
+		}
+	}
 
 	if _, err := fmt.Fprintf(buf, "package %s\n", g.packageName); err != nil {
 		return 0, fmt.Errorf("failed to write package name: %v", err)
